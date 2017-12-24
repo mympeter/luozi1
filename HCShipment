@@ -1,0 +1,86 @@
+package other.aadbcb.bjbccedppeiaf;
+	import java.io.IOException;
+	import java.util.List;
+
+	import net.sf.json.JSONArray;
+	import net.sf.json.JSONObject;
+
+	import com.rkhd.platform.sdk.ScriptTrigger;
+	import com.rkhd.platform.sdk.exception.ScriptBusinessException;
+	import com.rkhd.platform.sdk.http.RkhdHttpClient;
+	import com.rkhd.platform.sdk.http.RkhdHttpData;
+	import com.rkhd.platform.sdk.log.Logger;
+	import com.rkhd.platform.sdk.log.LoggerFactory;
+	import com.rkhd.platform.sdk.model.DataModel;
+	import com.rkhd.platform.sdk.param.ScriptTriggerParam;
+	import com.rkhd.platform.sdk.param.ScriptTriggerResult;
+
+	public class HCShipment implements ScriptTrigger {
+		private static final Logger logger = LoggerFactory.getLogger();
+		@Override
+		public ScriptTriggerResult execute(ScriptTriggerParam scriptTriggerParam)
+				throws ScriptBusinessException {
+			if (scriptTriggerParam != null) {
+				List<DataModel> modelList = scriptTriggerParam.getDataModelList();
+				if (modelList != null && modelList.size() > 0) {
+						DataModel dataModel = modelList.get(0);
+						String orderid = dataModel.getAttribute("customItem1__c").toString();//��ȡ����id	
+						RkhdHttpClient client = null;
+						try {
+							client = new RkhdHttpClient();
+						} catch (IOException e) {
+							logger.error(e.getMessage(), e);
+						}					
+						float totalshippmentamount=CalcOrderShippmentAmount(client,orderid);//��������������
+						UpdateOrderShipAmount(client,orderid,totalshippmentamount);
+				}
+			}
+			return new ScriptTriggerResult(scriptTriggerParam.getDataModelList());
+		}
+		private void UpdateOrderShipAmount(RkhdHttpClient client, String orderid,
+				float totalshippmentamount) {
+			String result="";
+			RkhdHttpData updateData = new RkhdHttpData();
+	        updateData.setCallString("/data/v1/objects/order/update");
+	        updateData.setCall_type("POST");
+	        JSONObject jo2 = new JSONObject();       
+	        jo2.put("id", orderid); //����id      
+	        jo2.put("dbcReal2", totalshippmentamount);//�ۻ��������
+	        updateData.setBody(jo2.toString());
+	        logger.error(jo2.toString());
+	        try {
+	        	result = client.performRequest(updateData);
+	        	logger.info(result);
+			} catch (IOException e) {
+				logger.error(e.getMessage(), e);
+			}	
+			// TODO Auto-generated method stub
+			
+		}
+		private float CalcOrderShippmentAmount(RkhdHttpClient client, String orderid) {		
+			// TODO Auto-generated method stub
+			RkhdHttpData data = new RkhdHttpData();
+			float  totalshippmentamount=0;
+			float  amount = 0;
+			String	getCcodesql = "select customItem4__c  from  customEntity54__c  where approvalStatus=3 and customItem1__c="+orderid;//��ѯ�������µ����з�������ֶ�
+			data.putFormData("q", getCcodesql);
+			data.setCall_type("POST");
+			data.setCallString("/data/v1/query");			
+			try {
+					String queryResult = client.performRequest(data);// ���ò�ѯ
+					JSONObject jo = JSONObject.fromObject(queryResult);
+					JSONArray ja = jo.getJSONArray("records");//��ȡ����ֵ��Ϣ
+					if (ja != null && ja.size() != 0) {
+						for (int i = 0; i < ja.size(); i++) {
+							JSONObject jo2 = ja.getJSONObject(i);
+							String amountstr = jo2.getString("customItem4__c");						
+							amount=Float.parseFloat(amountstr);
+							totalshippmentamount+=amount;
+						}
+					}
+				} catch (IOException e) {
+					logger.error(e.getMessage(), e);
+			}		
+			return totalshippmentamount;		
+		}
+	}
